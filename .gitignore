@@ -1,0 +1,41 @@
+# Environment files
+.env.local
+.env.*.local
+
+# Symfony
+/var/
+/vendor/
+/public/bundles/
+/public/build/
+/public/hot
+/public/storage
+/var/cache/
+/var/log/
+/var/sessions/
+
+# Docker
+docker-compose.override.yml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# Build artifacts
+/build/
+/dist/
+/public/build/
+/public/css/
+/public/js/

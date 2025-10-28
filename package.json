@@ -1,0 +1,49 @@
+{
+  "name": "reg121-homepage",
+  "version": "1.0.0",
+  "description": "REG 121 Homepage - Domain/Website Platform",
+  "scripts": {
+    "dev": "npm run watch",
+    "build": "npm run build:css && npm run build:js",
+    "build:css": "sass assets/scss/app.scss public/css/app.css --style=compressed",
+    "build:js": "webpack --mode=production",
+    "watch": "npm run watch:css & npm run watch:js",
+    "watch:css": "sass --watch assets/scss/app.scss:public/css/app.css --style=expanded",
+    "watch:js": "webpack --mode=development --watch",
+    "install-deps": "npm install",
+    "clean": "rm -rf public/css/* public/js/* public/build/*"
+  },
+  "devDependencies": {
+    "@symfony/webpack-encore": "^2.0.0",
+    "webpack": "^5.0.0",
+    "webpack-cli": "^5.0.0",
+    "sass": "^1.69.0",
+    "sass-loader": "^13.0.0",
+    "css-loader": "^6.0.0",
+    "style-loader": "^3.0.0",
+    "file-loader": "^6.0.0",
+    "url-loader": "^4.0.0",
+    "webpack-dev-server": "^4.0.0"
+  },
+  "dependencies": {
+    "@121digital/bootstrap": "^5.3.8",
+    "bootstrap-icons": "^1.11.0",
+    "@popperjs/core": "^2.11.0",
+    "jquery": "^3.7.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/121digital/reg121-homepage.git"
+  },
+  "keywords": [
+    "reg121",
+    "homepage",
+    "domain",
+    "website",
+    "platform",
+    "symfony",
+    "bootstrap"
+  ],
+  "author": "REG 121 Digital",
+  "license": "proprietary"
+}
