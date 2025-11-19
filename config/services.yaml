@@ -4,6 +4,7 @@
 # Put parameters here that don't need to change on each machine where the app is deployed
 # https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
 parameters:
+    aws_s3_bucket: '%env(string:AWS_S3_BUCKET)%'
 
 services:
     # default configuration for services in *this* file
@@ -16,5 +17,44 @@ services:
     App\:
         resource: '../src/'
 
+    App\Admin\Controller\:
+        resource: '../src/Admin/Controller'
+        tags: ['controller.service_arguments']
+
+    Symfony\Component\HttpFoundation\Session\Storage\Handler\RedisSessionHandler:
+        arguments:
+            - '@Redis'
+            # you can optionally pass an array of options. The only options are 'prefix' and 'ttl',
+            # which define the prefix to use for the keys to avoid collision on the Redis server
+            # and the expiration time for any given entry (in seconds), defaults are 'sf_s' and null:
+            # - { 'prefix': 'my_prefix', 'ttl': 600 }
+
+    # Redis Service for Session Storage 
+    Redis:
+        class: \Redis
+        calls:
+            - connect:
+                - '%env(REDIS_HOST)%'
+                - '%env(int:REDIS_PORT)%'
+
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones
+    
+    # AWS S3 Client
+    aws_s3_client:
+        class: Aws\S3\S3Client
+        arguments:
+            - 
+                region: '%env(string:AWS_S3_REGION)%'
+                version: 'latest'
+                credentials:
+                    key: '%env(string:AWS_ACCESS_KEY_ID)%'
+                    secret: '%env(string:AWS_SECRET_ACCESS_KEY)%'
+    
+    # Custom Random Namer for VichUploader
+    App\Naming\RandomNamer:
+        tags: ['vich_uploader.namer']
+    
+    # Custom Environment Variable Processor for DATABASE_URL with SSL support
+    App\Service\DatabaseUrlProcessor:
+        tags: ['container.env_var_processor']

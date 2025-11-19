@@ -1,0 +1,15 @@
+vich_uploader:
+    db_driver: orm
+    storage: flysystem
+
+    # Add your mappings here as needed
+    # Example:
+    # mappings:
+    #     your_mapping_name:
+    #         uri_prefix: '%env(string:AWS_S3_URL)%/uploads'
+    #         upload_destination: 'aws.storage'
+    #         namer:
+    #             service: App\Naming\RandomNamer
+    #             options:
+    #                 length: 32
+

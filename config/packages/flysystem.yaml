@@ -1,0 +1,16 @@
+# Read the documentation at https://github.com/thephpleague/flysystem-bundle/blob/master/docs/1-getting-started.md
+flysystem:
+    storages:
+        default.storage:
+            adapter: 'local'
+            options:
+                directory: '%kernel.project_dir%/var/storage/default'
+        
+        # Example AWS S3 storage - configure as needed
+        # aws.storage:
+        #     adapter: 'aws'
+        #     options:
+        #         client: 'aws_s3_client'
+        #         bucket: '%aws_s3_bucket%'
+        #         prefix: 'uploads'
+
