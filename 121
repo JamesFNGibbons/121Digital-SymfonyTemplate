@@ -123,6 +123,13 @@ rebuild() {
 # Development commands
 start() {
     echo -e "${BLUE}Starting development environment...${NC}"
+    
+    # Ensure public/build directory exists to prevent docker errors
+    if [ ! -d "public/build" ]; then
+        echo -e "${YELLOW}Creating public/build directory...${NC}"
+        mkdir -p public/build
+    fi
+    
     docker-compose up -d
     echo -e "${GREEN}Development environment started!${NC}"
     echo -e "${BLUE}Application: http://localhost${NC}"
