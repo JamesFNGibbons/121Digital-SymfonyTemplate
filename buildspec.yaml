@@ -1,0 +1,133 @@
+version: 0.2
+
+env:
+  variables:
+    REGISTRY: "ghcr.io"
+    ORG: "github-org"
+    REPO: "github-repo"
+    PLATFORM: "linux/arm64"
+    GITHUB_USERNAME: "github-username"
+  secrets-manager:
+    GHCR_TOKEN: "GHCR_TOKEN:Token"
+
+phases:
+  pre_build:
+    commands:
+      # Install Docker buildx
+      - |
+        echo "Installing Docker buildx..."
+        mkdir -p ~/.docker/cli-plugins
+        curl -L https://github.com/docker/buildx/releases/download/v0.11.2/buildx-v0.11.2.linux-arm64 -o ~/.docker/cli-plugins/docker-buildx
+        chmod +x ~/.docker/cli-plugins/docker-buildx
+        docker buildx version
+      
+      # Login to GHCR
+      - |
+        echo "Logging in to GHCR..."
+        echo $GHCR_TOKEN | docker login $REGISTRY -u $GITHUB_USERNAME --password-stdin
+      
+      # Set up buildx builder (create if doesn't exist, use if exists)
+      - |
+        echo "Setting up buildx builder..."
+        docker buildx create --use --name multiarch --driver docker-container || docker buildx use multiarch
+        docker buildx inspect --bootstrap
+      
+      # Determine version tag
+      - |
+        echo "CODEBUILD_SOURCE_VERSION: '$CODEBUILD_SOURCE_VERSION'"
+        if [ -n "$CODEBUILD_SOURCE_VERSION" ] && [[ "$CODEBUILD_SOURCE_VERSION" == refs/tags/* ]]; then
+          export VERSION_TAG=${CODEBUILD_SOURCE_VERSION#refs/tags/}
+        elif [ "$CODEBUILD_SOURCE_VERSION" == "refs/heads/Production" ]; then
+          export VERSION_TAG=latest
+        elif [ -n "$CODEBUILD_SOURCE_VERSION" ]; then
+          export VERSION_TAG=${CODEBUILD_SOURCE_VERSION:0:8}
+        else
+          # Fallback: extract UUID from build ID (part after colon) or use timestamp
+          if [ -n "$CODEBUILD_BUILD_ID" ] && [[ "$CODEBUILD_BUILD_ID" == *:* ]]; then
+            export VERSION_TAG=$(echo "$CODEBUILD_BUILD_ID" | cut -d: -f2)
+          elif [ -n "$CODEBUILD_BUILD_ID" ]; then
+            export VERSION_TAG=$(echo "$CODEBUILD_BUILD_ID" | sed 's/[^a-zA-Z0-9._-]/-/g')
+          else
+            export VERSION_TAG=$(date +%Y%m%d-%H%M%S)
+          fi
+        fi
+        # Ensure VERSION_TAG is never empty
+        if [ -z "$VERSION_TAG" ]; then
+          export VERSION_TAG=$(date +%Y%m%d-%H%M%S)
+        fi
+        # Final sanitization: ensure tag only contains valid Docker tag characters and limit length
+        export VERSION_TAG=$(echo "$VERSION_TAG" | sed 's/[^a-zA-Z0-9._-]/-/g' | cut -c1-63)
+        echo "Building with tag: $VERSION_TAG"
+        echo "VERSION_TAG=$VERSION_TAG" >> /tmp/build.env
+
+  build:
+    commands:
+      - source /tmp/build.env
+      
+      # Build frontend assets with NodeJS container
+      - |
+        echo "=========================================="
+        echo "Building frontend assets with NodeJS..."
+        echo "=========================================="
+        docker run --rm \
+          -v $(pwd):/app \
+          -w /app \
+          node:20-alpine \
+          sh -c "yarn install && yarn build"
+        echo "Frontend assets built successfully"
+      
+      # Build and push PHP container
+      - |
+        echo "=========================================="
+        echo "Building PHP container..."
+        echo "=========================================="
+        docker buildx build \
+          --platform $PLATFORM \
+          --file docker/php/Dockerfile \
+          --tag $REGISTRY/$ORG/$REPO/php:$VERSION_TAG \
+          --tag $REGISTRY/$ORG/$REPO/php:latest \
+          --push \
+          .
+        echo "PHP container built and pushed successfully"
+      
+      # Build and push Nginx container
+      - |
+        echo "=========================================="
+        echo "Building Nginx container..."
+        echo "=========================================="
+        docker buildx build \
+          --platform $PLATFORM \
+          --file docker/nginx/Dockerfile \
+          --tag $REGISTRY/$ORG/$REPO/nginx:$VERSION_TAG \
+          --tag $REGISTRY/$ORG/$REPO/nginx:latest \
+          --push \
+          .
+        echo "Nginx container built and pushed successfully"
+      
+      # Pull, tag, and push Redis container
+      - |
+        echo "=========================================="
+        echo "Pulling and tagging Redis container..."
+        echo "=========================================="
+        docker pull --platform $PLATFORM redis:7.0-alpine
+        docker tag redis:7.0-alpine $REGISTRY/$ORG/$REPO/redis:$VERSION_TAG
+        docker tag redis:7.0-alpine $REGISTRY/$ORG/$REPO/redis:latest
+        docker push $REGISTRY/$ORG/$REPO/redis:$VERSION_TAG
+        docker push $REGISTRY/$ORG/$REPO/redis:latest
+        echo "Redis container pushed successfully"
+
+  post_build:
+    commands:
+      - source /tmp/build.env
+      - |
+        echo "=========================================="
+        echo "Build completed successfully!"
+        echo "=========================================="
+        echo "Version tag: $VERSION_TAG"
+        echo "Images pushed to:"
+        echo "  - $REGISTRY/$ORG/$REPO/php:$VERSION_TAG"
+        echo "  - $REGISTRY/$ORG/$REPO/php:latest"
+        echo "  - $REGISTRY/$ORG/$REPO/nginx:$VERSION_TAG"
+        echo "  - $REGISTRY/$ORG/$REPO/nginx:latest"
+        echo "  - $REGISTRY/$ORG/$REPO/redis:$VERSION_TAG"
+        echo "  - $REGISTRY/$ORG/$REPO/redis:latest"
