@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# REG 121 npm shortcut
+# This script acts as a shortcut for ./121 npm while maintaining the REG 121 branding
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Call the main REG 121 CLI with npm command and pass all arguments
+exec "$SCRIPT_DIR/121" yarn "$@"

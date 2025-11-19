@@ -1,411 +1,299 @@
+# Execute arbitrary PHP commands in the php container
+php_cmd() {
+    docker-compose exec php "$@"
+}
 #!/bin/bash
 
-# REG 121 Homepage CLI Tool
-# A branded command-line interface for managing the REG 121 development environment
+# REG121 Homepage Development Scripts
+# Usage: ./dev-scripts.sh [command]
 
-# Colors for REG 121 branding
-ORANGE='\033[38;5;208m'
-WHITE='\033[37m'
-BOLD='\033[1m'
-RESET='\033[0m'
-GREEN='\033[32m'
-RED='\033[31m'
-YELLOW='\033[33m'
-BLUE='\033[34m'
+set -e
 
-# REG 121 Logo and Branding
-show_logo() {
-    echo -e "${ORANGE}${BOLD}"
-    echo "██████╗ ███████╗ ██████╗ ██╗██████╗  ██╗"
-    echo "██╔══██╗██╔════╝██╔════╝███║╚════██╗███║"
-    echo "██████╔╝█████╗  ██║  ███╗╚██║ █████╔╝╚██║"
-    echo "██╔══██╗██╔══╝  ██║   ██║ ██║██╔═══╝  ██║"
-    echo "██║  ██║███████╗╚██████╔╝ ██║███████╗ ██║"
-    echo "╚═╝  ╚═╝╚══════╝ ╚═════╝  ╚═╝╚══════╝ ╚═╝"
-    echo -e "${RESET}"
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Get current user ID and group ID for volume permissions
+export USER_ID=$(id -u)
+export GROUP_ID=$(id -g)
+
+print_help() {
+    echo -e "${BLUE}REG121 Symfony Development Commands:${NC}"
+    echo ""
+    echo -e "${GREEN}Setup Commands:${NC}"
+    echo "  setup           - Initial setup (build containers, install dependencies)"
+    echo "  build           - Build development containers"
+    echo "  rebuild         - Rebuild containers from scratch"
+    echo ""
+    echo -e "${GREEN}Development Commands:${NC}"
+    echo "  start           - Start development environment"
+    echo "  stop            - Stop development environment"
+    echo "  restart         - Restart development environment"
+    echo "  logs            - Show container logs"
+    echo "  status          - Show container status"
+    echo ""
+    echo -e "${GREEN}Application Commands:${NC}"
+    echo "  shell           - Open shell in app container"
+    echo "  symfony         - Run Symfony console commands"
+    echo "  console         - Run Symfony console commands (alias for symfony)"
+    echo "  composer        - Run Composer commands"
+    echo "  yarn            - Run Yarn commands"
+    echo "  cache-clear     - Clear Symfony cache"
+    echo "  cache-warmup    - Warm up Symfony cache"
+    echo ""
+    echo -e "${GREEN}Frontend Commands:${NC}"
+    echo "  vite-start      - Start Vite dev server"
+    echo "  vite-stop       - Stop Vite dev server"
+    echo "  assets-build    - Build production assets"
+    echo "  assets-watch    - Build assets in watch mode"
+    echo ""
+    echo -e "${GREEN}Database Commands:${NC}"
+    echo "  db-create       - Create database"
+    echo "  db-migrate      - Run database migrations"
+    echo "  db-reset        - Reset database with fresh data"
+    echo "  db-shell        - Open database shell"
+    echo ""
+    echo -e "${GREEN}Utility Commands:${NC}"
+    echo "  clean           - Clean up containers and volumes"
+    echo "  permissions     - Fix file permissions"
+    echo "  health          - Check system health"
+    echo ""
+    echo -e "${GREEN}Code Quality Commands:${NC}"
+    echo "  cs-fix          - Fix code style issues with PHP CS Fixer"
+    echo "  cs-check        - Check code style without fixing"
+    echo "  cs-dry-run      - Preview what would be fixed (dry run)"
 }
 
-# Help function
-show_help() {
-    show_logo
-    echo -e "${WHITE}${BOLD}Usage:${RESET} ./121 [COMMAND] [OPTIONS]"
-    echo ""
-    echo -e "${ORANGE}${BOLD}Available Commands:${RESET}"
-    echo ""
-    echo -e "${GREEN}  start${RESET}           Start the development environment"
-    echo -e "${GREEN}  stop${RESET}            Stop the development environment"
-    echo -e "${GREEN}  restart${RESET}         Restart all services"
-    echo -e "${GREEN}  destroy${RESET}         Stop and remove all containers and volumes"
-    echo -e "${GREEN}  status${RESET}           Show status of all services"
-    echo ""
-    echo -e "${BLUE}  logs${RESET}             Show logs for all services"
-    echo -e "${BLUE}  logs [service]${RESET}    Show logs for specific service (app, nginx, mssql)"
-    echo ""
-echo -e "${YELLOW}  clear-cache${RESET}     Clear Symfony application cache"
-echo -e "${YELLOW}  composer [cmd]${RESET}   Run composer commands in the app container"
-echo -e "${YELLOW}  console [cmd]${RESET}   Run Symfony console commands"
-echo -e "${YELLOW}  npm [cmd]${RESET}       Run npm commands in the app container"
-echo -e "${YELLOW}  build-assets${RESET}    Build frontend assets"
-echo -e "${YELLOW}  watch-assets${RESET}    Watch and rebuild assets on changes"
-    echo ""
-    echo -e "${RED}  db-connect${RESET}       Connect to MSSQL database"
-    echo -e "${RED}  db-reset${RESET}          Reset database (recreate with sample data)"
-    echo ""
-    echo -e "${WHITE}  help${RESET}             Show this help message"
-    echo -e "${WHITE}  version${RESET}           Show version information"
-    echo ""
-    echo -e "${ORANGE}${BOLD}Examples:${RESET}"
-    echo "  ./121 start                    # Start all services"
-    echo "  ./121 logs app                 # Show application logs"
-echo "  ./121 console make:controller  # Create a new controller"
-echo "  ./121 composer install         # Install dependencies"
-echo "  ./121 npm install              # Install npm dependencies"
-echo "  ./121 build-assets             # Build frontend assets"
-    echo ""
-}
-
-# Version function
-show_version() {
-    echo -e "${ORANGE}${BOLD}REG 121 Homepage CLI${RESET}"
-    echo -e "${WHITE}Version:${RESET} 1.0.0"
-    echo -e "${WHITE}Symfony:${RESET} 7.3"
-    echo -e "${WHITE}PHP:${RESET} 8.2"
-    echo -e "${WHITE}Database:${RESET} MSSQL Server 2019"
-    echo ""
-}
-
-# Check if Docker is running
-check_docker() {
-    if ! docker info > /dev/null 2>&1; then
-        echo -e "${RED}${BOLD}Error:${RESET} Docker is not running. Please start Docker Desktop first."
-        exit 1
-    fi
-}
-
-# Start services
-start_services() {
-    echo -e "${ORANGE}${BOLD}Starting REG 121 development environment...${RESET}"
-    check_docker
+# Setup functions
+setup() {
+    echo -e "${BLUE}Setting up REG121 Homepage development environment...${NC}"
     
-    if docker-compose ps | grep -q "Up"; then
-        echo -e "${YELLOW}Some services are already running. Use 'restart' to restart all services.${RESET}"
-        docker-compose ps
-        return
-    fi
+    # Create required directories
+    mkdir -p var/cache var/log var/sessions var/mysql
     
+    # Build containers
+    build
+    
+    # Start services
+    docker-compose up -d db redis mailhog
+    
+    # Wait for database
+    echo -e "${YELLOW}Waiting for database to be ready...${NC}"
+    sleep 10
+    
+    # Start app containers
+    docker-compose up -d php nginx node
+    
+    # Install dependencies
+    echo -e "${YELLOW}Installing PHP dependencies...${NC}"
+    docker-compose exec php composer install
+    
+    echo -e "${YELLOW}Installing Node.js dependencies...${NC}"
+    docker-compose exec node yarn install
+    
+    # Build initial assets
+    echo -e "${YELLOW}Building initial assets...${NC}"
+    docker-compose exec node yarn build
+    
+    # Setup database
+    db-create
+    
+    # Fix permissions
+    permissions
+    
+    echo -e "${GREEN}Development environment setup complete!${NC}"
+    echo -e "${BLUE}Access your application at: http://localhost (nginx)${NC}"
+    echo -e "${BLUE}MailHog Web UI at: http://localhost:8025${NC}"
+}
+
+build() {
+    echo -e "${BLUE}Building development containers...${NC}"
+    docker-compose build
+}
+
+rebuild() {
+    echo -e "${BLUE}Rebuilding containers from scratch...${NC}"
+    docker-compose down -v
+    docker-compose build --no-cache
+}
+
+# Development commands
+start() {
+    echo -e "${BLUE}Starting development environment...${NC}"
     docker-compose up -d
-    echo ""
-    echo -e "${GREEN}${BOLD}✅ REG 121 environment started successfully!${RESET}"
-    echo -e "${WHITE}Web Application:${RESET} http://localhost"
-    echo -e "${WHITE}Database:${RESET} localhost:1433 (sa/YourStrong@Passw0rd)"
-    echo ""
-    show_status
+    echo -e "${GREEN}Development environment started!${NC}"
+    echo -e "${BLUE}Application: http://localhost${NC}"
+    echo -e "${BLUE}MailHog: http://localhost:8025${NC}"
 }
 
-# Stop services
-stop_services() {
-    echo -e "${ORANGE}${BOLD}Stopping REG 121 development environment...${RESET}"
-    check_docker
-    
+stop() {
+    echo -e "${BLUE}Stopping development environment...${NC}"
     docker-compose down
-    echo -e "${GREEN}${BOLD}✅ REG 121 environment stopped successfully!${RESET}"
 }
 
-# Restart services
-restart_services() {
-    echo -e "${ORANGE}${BOLD}Restarting REG 121 development environment...${RESET}"
-    check_docker
-    
-    docker-compose restart
-    echo -e "${GREEN}${BOLD}✅ REG 121 environment restarted successfully!${RESET}"
-    echo ""
-    show_status
+restart() {
+    stop
+    start
 }
 
-# Destroy everything
-destroy_services() {
-    echo -e "${RED}${BOLD}⚠️  WARNING: This will destroy all containers and volumes!${RESET}"
-    echo -e "${WHITE}This action cannot be undone. All data will be lost.${RESET}"
-    echo ""
-    read -p "Are you sure you want to continue? (y/N): " -n 1 -r
-    echo ""
-    
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo -e "${ORANGE}${BOLD}Destroying REG 121 development environment...${RESET}"
-        check_docker
-        
-        docker-compose down -v --remove-orphans
-        docker system prune -f
-        
-        echo -e "${GREEN}${BOLD}✅ REG 121 environment destroyed successfully!${RESET}"
-        echo -e "${WHITE}All containers, volumes, and data have been removed.${RESET}"
-    else
-        echo -e "${YELLOW}Operation cancelled.${RESET}"
-    fi
+logs() {
+    docker-compose logs -f ${2:-}
 }
 
-# Show status
-show_status() {
-    echo -e "${ORANGE}${BOLD}REG 121 Service Status:${RESET}"
-    echo ""
+status() {
     docker-compose ps
-    echo ""
-    
-    # Check if services are healthy
-    if docker-compose ps | grep -q "Up"; then
-        echo -e "${GREEN}${BOLD}✅ Services are running${RESET}"
-        
-        # Test web connectivity
-        if curl -s -o /dev/null -w "%{http_code}" http://localhost | grep -q "200\|404"; then
-            echo -e "${GREEN}✅ Web server is accessible${RESET}"
-        else
-            echo -e "${YELLOW}⚠️  Web server may not be ready yet${RESET}"
-        fi
-        
-        # Test database connectivity
-        if docker-compose exec -T mssql /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrong@Passw0rd -Q "SELECT 1" > /dev/null 2>&1; then
-            echo -e "${GREEN}✅ Database is accessible${RESET}"
-        else
-            echo -e "${YELLOW}⚠️  Database may not be ready yet${RESET}"
-        fi
-    else
-        echo -e "${RED}${BOLD}❌ Services are not running${RESET}"
-        echo -e "${WHITE}Run './121 start' to start the environment${RESET}"
-    fi
-    echo ""
 }
 
-# Show logs
-show_logs() {
-    local service=$1
-    
-    if [ -z "$service" ]; then
-        echo -e "${ORANGE}${BOLD}Showing logs for all REG 121 services...${RESET}"
-        docker-compose logs -f
-    else
-        echo -e "${ORANGE}${BOLD}Showing logs for REG 121 $service service...${RESET}"
-        docker-compose logs -f "$service"
-    fi
+# Application commands
+shell() {
+    docker-compose exec php bash
 }
 
-# Clear cache
-clear_cache() {
-    echo -e "${ORANGE}${BOLD}Clearing REG 121 application cache...${RESET}"
-    check_docker
-    
-    if docker-compose ps | grep -q "Up.*app"; then
-        docker-compose exec app php bin/console cache:clear
-        echo -e "${GREEN}${BOLD}✅ Cache cleared successfully!${RESET}"
-    else
-        echo -e "${RED}${BOLD}❌ Application container is not running${RESET}"
-        echo -e "${WHITE}Run './121 start' first${RESET}"
-    fi
+symfony_cmd() {
+    docker-compose exec php php bin/console "${@:2}"
 }
 
-# Composer commands
-run_composer() {
-    local cmd=$1
-    
-    if [ -z "$cmd" ]; then
-        echo -e "${RED}${BOLD}Error:${RESET} Please specify a composer command"
-        echo -e "${WHITE}Example: ./121 composer install${RESET}"
-        exit 1
-    fi
-    
-    echo -e "${ORANGE}${BOLD}Running composer $cmd...${RESET}"
-    check_docker
-    
-    if docker-compose ps | grep -q "Up.*app"; then
-        docker-compose exec app composer "$@"
-    else
-        echo -e "${RED}${BOLD}❌ Application container is not running${RESET}"
-        echo -e "${WHITE}Run './121 start' first${RESET}"
-        exit 1
-    fi
+composer_cmd() {
+    docker-compose exec php composer "${@:2}"
 }
 
-# Console commands
-run_console() {
-    local cmd=$1
-    
-    if [ -z "$cmd" ]; then
-        echo -e "${RED}${BOLD}Error:${RESET} Please specify a console command"
-        echo -e "${WHITE}Example: ./121 console make:controller${RESET}"
-        exit 1
-    fi
-    
-    echo -e "${ORANGE}${BOLD}Running Symfony console $cmd...${RESET}"
-    check_docker
-    
-    if docker-compose ps | grep -q "Up.*app"; then
-        docker-compose exec app php bin/console "$@"
-    else
-        echo -e "${RED}${BOLD}❌ Application container is not running${RESET}"
-        echo -e "${WHITE}Run './121 start' first${RESET}"
-        exit 1
-    fi
+yarn_cmd() {
+    docker-compose exec node yarn "${@:2}"
 }
 
-# npm commands
-run_npm() {
-    local cmd=$1
-    
-    if [ -z "$cmd" ]; then
-        echo -e "${RED}${BOLD}Error:${RESET} Please specify an npm command"
-        echo -e "${WHITE}Example: ./121 npm install${RESET}"
-        exit 1
-    fi
-    
-    echo -e "${ORANGE}${BOLD}Running npm $cmd...${RESET}"
-    check_docker
-    
-    if docker-compose ps | grep -q "Up.*app"; then
-        docker-compose exec app npm "$@"
-    else
-        echo -e "${RED}${BOLD}❌ Application container is not running${RESET}"
-        echo -e "${WHITE}Run './121 start' first${RESET}"
-        exit 1
-    fi
+cache_clear() {
+    echo -e "${BLUE}Clearing Symfony cache...${NC}"
+    docker-compose exec php php bin/console cache:clear
+    permissions
 }
 
-# Build assets
-build_assets() {
-    echo -e "${ORANGE}${BOLD}Building REG 121 frontend assets...${RESET}"
-    check_docker
-    
-    if docker-compose ps | grep -q "Up.*app"; then
-        docker-compose exec app npm run build
-        echo -e "${GREEN}${BOLD}✅ Assets built successfully!${RESET}"
-    else
-        echo -e "${RED}${BOLD}❌ Application container is not running${RESET}"
-        echo -e "${WHITE}Run './121 start' first${RESET}"
-        exit 1
-    fi
+cache_warmup() {
+    echo -e "${BLUE}Warming up Symfony cache...${NC}"
+    docker-compose exec php php bin/console cache:warmup
+    permissions
 }
 
-# Watch assets
-watch_assets() {
-    echo -e "${ORANGE}${BOLD}Watching REG 121 frontend assets...${RESET}"
-    check_docker
-    
-    if docker-compose ps | grep -q "Up.*app"; then
-        docker-compose exec app npm run watch
-    else
-        echo -e "${RED}${BOLD}❌ Application container is not running${RESET}"
-        echo -e "${WHITE}Run './121 start' first${RESET}"
-        exit 1
-    fi
+# Frontend commands
+vite_start() {
+    echo -e "${BLUE}Starting Vite dev server...${NC}"
+    docker-compose exec node yarn dev
 }
 
-# Database connect
-db_connect() {
-    echo -e "${ORANGE}${BOLD}Connecting to REG 121 MSSQL database...${RESET}"
-    check_docker
-    
-    if docker-compose ps | grep -q "Up.*mssql"; then
-        echo -e "${WHITE}Database connection details:${RESET}"
-        echo -e "${WHITE}  Server: localhost:1433${RESET}"
-        echo -e "${WHITE}  Database: reg121_homepage${RESET}"
-        echo -e "${WHITE}  Username: sa${RESET}"
-        echo -e "${WHITE}  Password: YourStrong@Passw0rd${RESET}"
-        echo ""
-        docker-compose exec mssql /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrong@Passw0rd
-    else
-        echo -e "${RED}${BOLD}❌ Database container is not running${RESET}"
-        echo -e "${WHITE}Run './121 start' first${RESET}"
-        exit 1
-    fi
+vite_stop() {
+    echo -e "${BLUE}Stopping Vite dev server...${NC}"
+    # Note: This will need manual stopping with Ctrl+C in the running container
+    echo -e "${YELLOW}Use Ctrl+C in the running vite process or restart the node container${NC}"
 }
 
-# Database reset
+assets_build() {
+    echo -e "${BLUE}Building production assets...${NC}"
+    docker-compose exec node yarn build
+}
+
+assets_watch() {
+    echo -e "${BLUE}Building assets in watch mode...${NC}"
+    docker-compose exec node yarn watch
+}
+
+# Database commands
+db_create() {
+    echo -e "${BLUE}Creating database...${NC}"
+    docker-compose exec php php bin/console doctrine:database:create --if-not-exists
+}
+
+db_migrate() {
+    echo -e "${BLUE}Running database migrations...${NC}"
+    docker-compose exec php php bin/console doctrine:migrations:migrate --no-interaction
+}
+
 db_reset() {
-    echo -e "${RED}${BOLD}⚠️  WARNING: This will reset the database and lose all data!${RESET}"
-    echo -e "${WHITE}This will recreate the database with sample data.${RESET}"
-    echo ""
-    read -p "Are you sure you want to continue? (y/N): " -n 1 -r
-    echo ""
-    
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo -e "${ORANGE}${BOLD}Resetting REG 121 database...${RESET}"
-        check_docker
-        
-        if docker-compose ps | grep -q "Up.*mssql"; then
-            # Drop and recreate database
-            docker-compose exec mssql /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrong@Passw0rd -Q "DROP DATABASE IF EXISTS reg121_homepage; CREATE DATABASE reg121_homepage;"
-            
-            # Run initialization script
-            docker-compose exec mssql /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrong@Passw0rd -d reg121_homepage -i /docker-entrypoint-initdb.d/01-init-database.sql
-            
-            echo -e "${GREEN}${BOLD}✅ Database reset successfully!${RESET}"
-        else
-            echo -e "${RED}${BOLD}❌ Database container is not running${RESET}"
-            echo -e "${WHITE}Run './121 start' first${RESET}"
-            exit 1
-        fi
-    else
-        echo -e "${YELLOW}Operation cancelled.${RESET}"
-    fi
+    echo -e "${BLUE}Resetting database...${NC}"
+    docker-compose exec php php bin/console doctrine:database:drop --force --if-exists
+    db_create
+    db_migrate
 }
 
-# Main command handler
-case "$1" in
-    start)
-        start_services
-        ;;
-    stop)
-        stop_services
-        ;;
-    restart)
-        restart_services
-        ;;
-    destroy)
-        destroy_services
-        ;;
-    status)
-        show_status
-        ;;
-    logs)
-        show_logs "$2"
-        ;;
-    clear-cache)
-        clear_cache
-        ;;
-    composer)
-        shift
-        run_composer "$@"
-        ;;
-    console)
-        shift
-        run_console "$@"
-        ;;
-    npm)
-        shift
-        run_npm "$@"
-        ;;
-    build-assets)
-        build_assets
-        ;;
-    watch-assets)
-        watch_assets
-        ;;
-    db-connect)
-        db_connect
-        ;;
-    db-reset)
-        db_reset
-        ;;
-    help|--help|-h)
-        show_help
-        ;;
-    version|--version|-v)
-        show_version
-        ;;
-    "")
-        show_help
-        ;;
-    *)
-        echo -e "${RED}${BOLD}Error:${RESET} Unknown command '$1'"
-        echo -e "${WHITE}Run './121 help' to see available commands${RESET}"
-        exit 1
-        ;;
+db_shell() {
+    docker-compose exec db mysql -u root -p reg121_homepage
+}
+
+# Utility commands
+clean() {
+    echo -e "${BLUE}Cleaning up containers and volumes...${NC}"
+    docker-compose down -v --remove-orphans
+    docker system prune -f
+}
+
+permissions() {
+    echo -e "${BLUE}Fixing file permissions...${NC}"
+    sudo chown -R $USER:$USER var/
+    sudo chmod -R 775 var/
+}
+
+health() {
+    echo -e "${BLUE}Checking system health...${NC}"
+    echo -e "${YELLOW}Container Status:${NC}"
+    status
+    echo ""
+    echo -e "${YELLOW}Application Health:${NC}"
+    curl -s http://localhost > /dev/null && echo -e "${GREEN}✓ Application responding${NC}" || echo -e "${RED}✗ Application not responding${NC}"
+    echo ""
+    echo -e "${YELLOW}Database Health:${NC}"
+    docker-compose exec db mysqladmin ping -h localhost -u root -proot && echo -e "${GREEN}✓ Database responding${NC}" || echo -e "${RED}✗ Database not responding${NC}"
+}
+
+# Code Quality commands
+cs_fix() {
+    echo -e "${BLUE}Running PHP CS Fixer to fix code style issues...${NC}"
+    docker-compose exec php ./vendor/bin/php-cs-fixer fix --config=.php-cs-fixer.php --verbose
+    echo -e "${GREEN}Code style fixes applied!${NC}"
+}
+
+cs_check() {
+    echo -e "${BLUE}Checking code style with PHP CS Fixer...${NC}"
+    docker-compose exec php ./vendor/bin/php-cs-fixer fix --config=.php-cs-fixer.php --dry-run --diff --verbose
+}
+
+cs_dry_run() {
+    echo -e "${BLUE}Running PHP CS Fixer dry run (preview mode)...${NC}"
+    docker-compose exec php ./vendor/bin/php-cs-fixer fix --config=.php-cs-fixer.php --dry-run --diff --verbose
+    echo -e "${YELLOW}This was a preview. Run './121 cs-fix' to apply the changes.${NC}"
+}
+
+# Command routing
+case "${1:-help}" in
+    setup) setup ;;
+    build) build ;;
+    rebuild) rebuild ;;
+    start) start ;;
+    stop) stop ;;
+    restart) restart ;;
+    logs) logs "$@" ;;
+    status) status ;;
+    shell) shell ;;
+    symfony) symfony_cmd "$@" ;;
+    console) symfony_cmd "$@" ;;
+    composer) composer_cmd "$@" ;;
+    yarn) yarn_cmd "$@" ;;
+    php) shift; php_cmd "$@" ;;
+    cache-clear) cache_clear ;;
+    cache-warmup) cache_warmup ;;
+    vite-start) vite_start ;;
+    vite-stop) vite_stop ;;
+    assets-build) assets_build ;;
+    assets-watch) assets_watch ;;
+    db-create) db_create ;;
+    db-migrate) db_migrate ;;
+    db-reset) db_reset ;;
+    db-shell) db_shell ;;
+    clean) clean ;;
+    permissions) permissions ;;
+    health) health ;;
+    cs-fix) cs_fix ;;
+    cs-check) cs_check ;;
+    cs-dry-run) cs_dry_run ;;
+    help|*) print_help ;;
 esac

@@ -1,0 +1,48 @@
+FROM php:8.1-fpm
+
+# Install composer & PHP extensions you need
+RUN apt-get update && apt-get install -y \
+    git zip unzip curl libzip-dev libicu-dev libonig-dev libssl-dev libpng-dev libjpeg-dev libfreetype6-dev libxml2-dev libcurl4-openssl-dev libxslt-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install pdo pdo_mysql zip intl mbstring gd xml curl xsl bcmath \
+    && pecl install redis \
+    && docker-php-ext-enable redis
+
+# Install Xdebug
+RUN pecl install xdebug && docker-php-ext-enable xdebug
+
+# Verify extensions are loaded and show PHP info
+RUN php -m | grep redis && php --ri redis
+
+# Install composer globally
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+
+# Set working directory
+WORKDIR /var/www/app
+
+# Set composer memory limit
+ENV COMPOSER_MEMORY_LIMIT=-1
+
+# Copy composer files first for better caching
+COPY composer.json composer.lock ./
+
+# Install dependencies
+RUN composer update --no-interaction --no-scripts --no-autoloader
+
+# Copy the rest of the application
+COPY . .
+
+# Generate autoloader
+RUN composer dump-autoload --optimize
+
+# Set proper permissions
+RUN chown -R www-data:www-data /var/www/app
+
+# Switch to www-data user
+USER www-data
+
+# Expose port 9000
+EXPOSE 9000
+
+# Start PHP-FPM
+CMD ["php-fpm"]
